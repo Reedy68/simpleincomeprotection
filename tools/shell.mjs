@@ -37,6 +37,7 @@ body.sp{margin:0;background:#f4f7fa}
 .sip .sp-prose th,.sip .sp-prose td{border:1px solid #dbe4ec;padding:10px 12px;text-align:left;vertical-align:top}
 .sip .sp-prose th{background:#eef3f8;color:#102B45}
 .sip .sp-prose strong{color:#1d2f46}
+.sip .sp-prose .sip-legal-page{font-size:17px!important;line-height:1.75!important;color:#2b3f55!important}.sip .sp-prose .sip-legal-page p,.sip .sp-prose .sip-legal-page li{font-size:17px!important;line-height:1.75!important}.sip .sp-prose .sip-legal-page h2{font-size:24px!important;line-height:1.25!important;color:#102B45!important;margin:38px 0 12px!important}.sip .sp-prose .sip-legal-page h3{font-size:19px!important;color:#1d2f46!important}
 .sip .sp-check{width:64px;height:64px;border-radius:50%;background:#239B35;display:flex;align-items:center;justify-content:center;margin:0 0 20px;box-shadow:0 0 0 8px rgba(35,155,53,.25)}
 .sip .sp-check svg{width:32px;height:32px}
 .sip .sp-prose .sp-steps{list-style:none;counter-reset:s;margin:18px 0 26px;padding:0;display:grid;gap:14px}
