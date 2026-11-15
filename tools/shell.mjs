@@ -50,6 +50,18 @@ body.sp{margin:0;background:#f4f7fa}
 .sip .sp-own{background:#fff}
 .sip .sip{width:auto;max-width:none;left:0;right:0;margin-left:0!important;margin-right:0!important}
 .sip .sp-own .sip{overflow:hidden}
+.sip{--hero-a:#102B45;--hero-b:#17407a}
+.sip .sp-leg .fl-row-content-wrap{padding:0!important}
+.sip .sp-leg .fl-row-content{max-width:none!important}
+.sip .sp-leg .fl-col-content,.sip .sp-leg .fl-module-content{margin:0!important;padding:0!important}
+.sip .hero h1,.sip .fhero h1{line-height:1.12;margin-bottom:18px}
+.sip .cta{background:linear-gradient(180deg,#3ab54a,#239B35);color:#fff!important;border-radius:12px;box-shadow:0 4px 12px rgba(35,155,53,.3);font-size:18px;padding:16px 30px}
+.sip .cta:hover{transform:none;box-shadow:0 4px 12px rgba(35,155,53,.3);filter:brightness(1.06)}
+.sip .sp-bb h1,.sip .sp-bb h2,.sip .sp-bb h3{font-family:"Plus Jakarta Sans","Inter",system-ui,sans-serif;color:#102B45;letter-spacing:-.02em}
+.sip .sp-bb{font-family:Inter,system-ui,sans-serif;color:#2b3f55}
+.sip .vmform,.sip .vmform label,.sip .vmform select,.sip .vmform input,.sip .vmform .vmform-label,.sip .vmform .vmform-step-title,.sip .vmform .vmform-description{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif!important}
+.sip .vmform label,.sip .vmform .vmform-label{font-weight:600;color:#1d2f46}
+.sip .vmform-button-next,.sip .vmform-button-submit{background:linear-gradient(180deg,#3ab54a,#239B35)!important;border:0!important;border-radius:12px!important;color:#fff!important;font-family:Inter,system-ui,sans-serif!important;font-size:18px!important;font-weight:700!important;box-shadow:0 4px 12px rgba(35,155,53,.3)}
 .sip .sp-own .inside-article,.sip .sp-own .entry-content{margin:0;padding:0}
 @media(max-width:640px){.sip .sp-card{padding:26px 20px;margin-top:-48px;border-radius:14px}.sip .sp-band{padding:30px 0 80px}.sip .top .sp-cta{padding:9px 14px;font-size:14px}.sip .sp-btn.alt{margin:10px 0 0}.sip .sp-steps li{padding:16px 16px 16px 60px}}
 `;
