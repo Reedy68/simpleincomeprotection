@@ -1,0 +1,41 @@
+name: Disclaimer sync
+# Checks VM's compliance wording once a day. If any form page is out of date it updates the pages on a
+# branch and opens a pull request. Nothing reaches main (or Cloudflare) until the PR is merged.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Update pages from VM wording
+        id: sync
+        run: |
+          set +e
+          node tools/disclaimer-sync/sync.mjs | tee report.txt
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Open pull request if anything changed
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- public; then echo "No page changes."; exit 0; fi
+          branch="disclaimer-sync-$(date -u +%Y-%m-%d)"
+          git config user.name "disclaimer-sync"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add public
+          git commit -m "Update VM disclaimer wording on form pages"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Update VM disclaimer wording ($(date -u +%Y-%m-%d))" --body-file report.txt
+      - name: Fail the run if a page needs a human
+        if: steps.sync.outputs.code == '1'
+        run: echo "A form page needs a human. See the report above." && exit 1
