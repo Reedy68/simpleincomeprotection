@@ -100,7 +100,6 @@ fs.writeFileSync(path.join(PUB, '404.html'), shell('Page not found', 'Page not f
 
 // ---- small root files
 fs.copyFileSync(path.join(HERE, 'assets-src', 'vv-tracking.js'), (fs.mkdirSync(path.join(PUB, 'assets/js'), { recursive: true }), path.join(PUB, 'assets/js/vv-tracking.js')));
-fs.writeFileSync(path.join(PUB, 'robots.txt'), fs.readFileSync(path.join(HERE, 'assets-src', 'robots.txt')));
 fs.writeFileSync(path.join(PUB, '_redirects'), '');
 fs.writeFileSync(path.join(PUB, '_headers'),
   '/wp-content/*\n  Cache-Control: public, max-age=31536000, immutable\n/wp-includes/*\n  Cache-Control: public, max-age=31536000, immutable\n/assets/*\n  Cache-Control: public, max-age=86400\n/failed/*\n  X-Robots-Tag: noindex\n');

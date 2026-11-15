@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /failed/
+
+# AI guide: https://simpleincomeprotection.co.uk/llms.txt
+Sitemap: https://simpleincomeprotection.co.uk/sitemap.xml
