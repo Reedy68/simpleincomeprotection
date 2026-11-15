@@ -297,7 +297,7 @@ function transform(f) {
     body = body.replace(/<script[^>]*type="text\/template"[^>]*id="tmpl-nf[\s\S]*?<\/script>/g, '');
     body = body.replace(/<div id="nf-form-1-cont"[\s\S]*?<\/div>\s*<\/div>/, '');
     body = body.replace(/<p><noscript class="ninja-forms-noscript-message">[\s\S]*?<\/div><\/div>\s*<\/p>|<noscript class="ninja-forms-noscript-message">[\s\S]*?(?=<\/div>\s*<\/div>\s*<\/div>\s*<\/div>\s*<div class="fl-row|<\/main>)/, '');
-    body = body.replace(/<p>To make contact with the team, please complete the contact form below\.<\/p>/, '<p>Simple Income Protection is a trading style of Blab Media Ltd, UK company registration number 11511037.</p><p>Email: <a href="mailto:blabmediauk@gmail.com">blabmediauk@gmail.com</a></p><p>Registered office address: Coridon, St James Road, Bridport, Dorset, DT6 5LL.</p>');
+    body = body.replace(/<p>To make contact with the team, please complete the contact form below\.<\/p>/, '<p>To contact us, email <a href="mailto:blabmediauk@gmail.com">blabmediauk@gmail.com</a>.</p>');
   }
   body = body.replace(/for a life insurance quote/g, 'for an income protection quote');
   // visible breadcrumb on the plain content pages (the schema only describes what is visible)
