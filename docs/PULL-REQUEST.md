@@ -33,7 +33,7 @@ Offline structural check (`tools/schema-check.mjs`): 15 pages, 0 problems. Not r
 2. **Noindex.** `/thank-you/`, `/thank-you-2/`, `/form-test/` and the two tag pages were indexable; now noindex (still served).
 3. **Cookie banner.** Complianz replaced by the CookieConsent bar used on Simple Life Cover, with the same Consent Mode defaults, `ads_data_redaction` and `url_passthrough` as before. Choices are logged to Workers Logs.
 4. **GTM.** Same container (GTM-P2MH4BCL), same tags and events (compared in the browser). It loads on first interaction or 6 s after load; on the thank-you pages it loads immediately so the conversion cannot be lost.
-5. **Contact Us.** The Ninja Forms contact form needed WordPress. The page now shows the email address and registered address from the privacy policy.
+5. **Contact Us.** The Ninja Forms contact form needed WordPress. The page now just says to email blabmediauk@gmail.com.
 6. **Thank-you pages.** Said "life insurance quote"; now "income protection quote".
 7. **Breadcrumb** added to the five content pages (so the breadcrumb schema matches what is visible).
 8. **Fonts and images.** Self-hosted, latin only (no Google Fonts). The three embedded photos became WebP files; 22 uploads converted to WebP.
@@ -46,9 +46,8 @@ Offline structural check (`tools/schema-check.mjs`): 15 pages, 0 problems. Not r
 - Not tested: a real submission to VM, the Data8 postcode lookup (it only works on the live domain), full form walk-through past step 2 (steps 1 to 2 tested).
 
 ## Needs you
-1. Create the `main` branch (for example add a README on GitHub), then tell me: I will rebase `static-rebuild` onto it and open this pull request.
-2. Connect the repo to Cloudflare (or give me the Worker name to deploy) so there is a workers.dev preview.
-3. Confirm `vmform_source` with VM; sign off titles and descriptions.
-4. Allow Actions to create pull requests (repo Settings > Actions > General) before the first disclaimer sync run.
+1. Connect the repo to Cloudflare (or give me the Worker name to deploy) so there is a workers.dev preview.
+2. Confirm `vmform_source` with VM; sign off titles and descriptions.
+3. Allow Actions to create pull requests (repo Settings > Actions > General) before the first disclaimer sync run.
 
 Cutover checklist: `docs/CUTOVER.md`.
