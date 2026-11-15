@@ -8,6 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import * as SH from './shell.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(process.argv[2]);
@@ -153,6 +154,15 @@ for (const f of ['cookieconsent.umd.js', 'sip-consent.js']) fs.copyFileSync(path
 const ccCss = minCss(fs.readFileSync(path.join(HERE, 'assets-src/cc/cookieconsent.css'), 'utf8') + fs.readFileSync(path.join(HERE, 'assets-src/cc/sip-cc-theme.css'), 'utf8'));
 const ccName = `assets/cc/consent-${hash(ccCss)}.css`;
 wr(ccName, ccCss);
+// ---------------------------------------------------------------- shared page shell (header, footer, content layout)
+const homeSrc = rd('index.html');
+const sipCss = [...homeSrc.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).find(c => c.includes('.sip{--hero-a'));
+if (!sipCss) throw new Error('landing page stylesheet not found');
+const shellCssText = minCss(sipCss.replace(/@import url\([^)]*\)\s*;?/g, '') + SH.EXTRA_CSS);
+const shellName = `assets/css/sip-${hash(shellCssText)}.css`;
+wr(shellName, shellCssText);
+const SHELL = SH.pieces(homeSrc);
+SHELL.footer = SHELL.footer.replace(/(<a href="\/cookie-policy\/">Cookie Policy<\/a>)(<\/nav>)/, '$1<button type="button" class="sip-cc-link" data-cc="show-preferencesModal">Manage cookies</button>$2');
 const formJsBuf = fs.readFileSync(path.join(HERE, 'assets-src/vmforms-public.js'));
 const formJsName = `wp-content/plugins/vmforms/public/js/public-${hash(formJsBuf.toString())}.js`;
 wr(formJsName, formJsBuf);
@@ -297,7 +307,7 @@ function transform(f) {
     body = body.replace(/<script[^>]*type="text\/template"[^>]*id="tmpl-nf[\s\S]*?<\/script>/g, '');
     body = body.replace(/<div id="nf-form-1-cont"[\s\S]*?<\/div>\s*<\/div>/, '');
     body = body.replace(/<p><noscript class="ninja-forms-noscript-message">[\s\S]*?<\/div><\/div>\s*<\/p>|<noscript class="ninja-forms-noscript-message">[\s\S]*?(?=<\/div>\s*<\/div>\s*<\/div>\s*<\/div>\s*<div class="fl-row|<\/main>)/, '');
-    body = body.replace(/<p>To make contact with the team, please complete the contact form below\.<\/p>/, '<p>To contact us, email <a href="mailto:blabmediauk@gmail.com">blabmediauk@gmail.com</a>.</p>');
+    body = body.replace(/<p>To make contact with the team, please complete the contact form below\.<\/p>/, '<p>To contact us, email:</p><p class="sp-mail"><a href="mailto:blabmediauk@gmail.com">blabmediauk@gmail.com</a></p>');
   }
   body = body.replace(/for a life insurance quote/g, 'for an income protection quote');
   // visible breadcrumb on the plain content pages (the schema only describes what is visible)
@@ -305,6 +315,40 @@ function transform(f) {
     const trail = u.startsWith('/income-protection/') && u !== '/income-protection/' ? [['Home', '/'], ['Income protection', '/income-protection/'], [cfg.name, null]] : [['Home', '/'], [cfg.name, null]];
     const bc = '<nav class="sip-bc" aria-label="Breadcrumb">' + trail.map(([t, h]) => h ? '<a href="' + h + '">' + t + '</a>' : '<span aria-current="page" style="margin:0">' + t + '</span>').join('<span aria-hidden="true">/</span>') + '</nav>';
     if (!isSip) body = body.replace(/(<main[^>]*id="main"[^>]*>)/, '$1' + bc);
+  }
+  // ----- shared shell: every page except the two landing pages gets the landing pages' header and footer
+  let shell = false, shellOwn = false;
+  if (!isSip) {
+    shell = true;
+    body = body.replace(/for a life insurance quote/g, 'for an income protection quote');
+    const txt = t => t.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const pTags = t => [...t.matchAll(/<p>([\s\S]*?)<\/p>/g)].map(m => txt(m[1]));
+    const mi = body.indexOf('<main'), mj = body.lastIndexOf('</main>');
+    let inner = mi >= 0 ? body.slice(body.indexOf('>', mi) + 1, mj) : '';
+    const crumbs = (inner.match(/<nav class="sip-bc"[\s\S]*?<\/nav>/) || [''])[0];
+    const h1 = txt((inner.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [, ''])[1]);
+    const kind = /^\/thank-you/.test(u) ? 'thanks' : u.startsWith('/tag/') ? 'tag' : ['/privacy-policy/', '/terms-and-conditions/', '/cookie-policy/', '/contact-us/'].includes(u) ? 'prose' : 'own';
+    inner = inner.replace(/<nav class="sip-bc"[\s\S]*?<\/nav>/, '').replace(/<header class="(?:entry-header|page-header)"[\s\S]*?<\/header>/, '')
+      .replace(/^\s*<article[^>]*>\s*<div class="inside-article">/, '').replace(/<\/div>\s*<\/article>\s*$/, '');
+    let main;
+    if (kind === 'thanks') {
+      const ps = pTags(inner);
+      if (ps.length < 8) throw new Error('thank-you page text changed: ' + ps.length + ' paragraphs');
+      main = SH.thanks(ps);
+    } else if (kind === 'tag') main = SH.prose({ h1: txt((mi >= 0 ? body.slice(mi, mj) : '').match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] || 'Archive'), kick: 'Archive', inner });
+    else if (kind === 'prose') {
+      inner = inner.replace(/<p>([\s\S]*?)<\/p>/g, (m, t) => '<p>' + t.split(/<br\s*\/?>\s*/i).reduce((acc, piece, i, arr) => i === 0 ? piece : acc + (/[.:;?!,]$/.test(arr[i - 1].trim()) || arr[i - 1].replace(/<[^>]+>/g, '').trim().length < 35 ? '<br>' : ' ') + piece, '') + '</p>');
+    }
+    if (kind === 'prose') main = SH.prose({ h1, kick: u === '/contact-us/' ? 'Get in touch' : 'Legal', crumbs, inner });
+    else {
+      shellOwn = true;
+      inner = inner.replace(/<div class="top"><div class="wrap">[\s\S]*?<\/div><\/div>/, '').replace(/<footer>[\s\S]*?<\/footer>/, '');
+      main = (crumbs ? '<div class="sp-wrap" style="padding-top:16px">' + crumbs + '</div>' : '') + '<div class="sp-own">' + inner + '</div>'
+        + `<link rel="stylesheet" href="/${shellName}">`;   // second copy, after the page's own CSS, so the shared header, footer and palette win
+    }
+    const gtmNs = (body.match(/<noscript><iframe src="https:\/\/www\.googletagmanager\.com\/ns\.html[\s\S]*?<\/noscript>/) || [''])[0];
+    const bodyOpen = ((body.match(/<body[^>]*>/) || ['<body>'])[0]).replace(/class="([^"]*)"/, 'class="$1 sp"');
+    body = bodyOpen + '\n' + gtmNs + '\n' + SH.page(SHELL.header, main, SHELL.footer) + '\n</body>\n</html>';
   }
   // VM form: its generated form CSS and its form definition script are big and identical on every visit, so serve them as cacheable files
   let formCssFile = '', formCfgFile = '';
@@ -354,17 +398,18 @@ function transform(f) {
   // fonts: only the families this page uses; preload the one its text needs first
   const detect = keepStyles.join('') + body;
   const count = n => (detect.match(new RegExp(n, 'gi')) || []).length;
-  const faces = fontBlocks.filter(([fam]) => count(fam) > 0 || fam === 'Open Sans' && !isSip).map(([, b]) => b).join('');
+  const faces = fontBlocks.filter(([fam]) => count(fam) > 0 || fam === 'Open Sans' && !isSip || (shell && /^(Inter|Plus Jakarta Sans)$/.test(fam))).map(([, b]) => b).join('');
   const pre = f => `<link rel="preload" href="/assets/fonts/${f}.woff2" as="font" type="font/woff2" crossorigin>`;
-  if (isSip) parts.push(pre('inter-400-700-latin') + pre('plusjakartasans-500-800-latin') + (isForm ? pre('nunito-400-800-latin') : ''));
+  if (isSip || shell) parts.push(pre('inter-400-700-latin') + pre('plusjakartasans-500-800-latin') + (isForm ? pre('nunito-400-800-latin') : ''));
   else parts.push(pre('opensans-300-800-latin'));
   if (heroPreload) parts.push(`<link rel="preload" as="image" href="${heroPreload}" fetchpriority="high">`);
   parts.push(`<style>${faces}</style>`);
-  parts.push(`<link rel="stylesheet" href="/${baseName}">`);
+  if (!shell || shellOwn) parts.push(`<link rel="stylesheet" href="/${baseName}">`);
+  if (shell) parts.push(`<link rel="stylesheet" href="/${shellName}">`);
   if (isForm) parts.push(`<link rel="stylesheet" href="/${formName}">`);
   if (formCssFile) parts.push(`<link rel="stylesheet" href="/${formCssFile}">`);
   if (isForm) parts.push('<style>.vmform-disclaimer a{text-decoration:underline;font-weight:700}</style>');
-  for (const s of keepStyles) parts.push(`<style>${s}</style>`);
+  if (!shell || shellOwn) for (const s of keepStyles) parts.push(`<style>${s}</style>`);
   // deferred scripts, in dependency order
   const scripts = isForm ? ['/wp-includes/js/jquery/jquery.min.js', '/wp-includes/js/jquery/jquery-migrate.min.js', ...(formCfgFile ? ['/' + formCfgFile] : []), ...FORM_SCRIPTS] : [];
   for (const s of scripts) parts.push(`<script defer src="${s}"></script>`);
@@ -412,20 +457,20 @@ const results = pageFiles.map(transform);
 }
 
 // ---------------------------------------------------------------- failed + 404 (rebuilt from the privacy page shell)
-function shell(title, heading, bodyHtml) {
+function shell(title, heading, bodyHtml, buttons) {
   let h = fs.readFileSync(path.join(OUT, 'privacy-policy/index.html'), 'utf8');
   h = h.replace(/<title>[^<]*<\/title>/, `<title>${title} | ${BRAND}</title>`)
     .replace(/<meta name="description"[^>]*>/, '').replace(/<meta property="og:[^>]*>|<meta name="twitter:[^>]*>/g, '')
     .replace(/<meta name="robots"[^>]*>/, '<meta name="robots" content="noindex,nofollow">')
     .replace(/<link rel="canonical"[^>]*>/, '').replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
   const i = h.indexOf('<main'), j = h.indexOf('</main>') + 7;
-  const main = `<main class="site-main" id="main"><article class="page type-page status-publish"><div class="inside-article"><header class="entry-header"><h1 class="entry-title" itemprop="headline">${heading}</h1></header><div class="entry-content" itemprop="text">${bodyHtml}</div></div></article></main>`;
+  const main = '<main id="main" class="sp-main">' + SH.message({ kick: title, h1: heading, inner: bodyHtml, buttons }) + '</main>';
   return h.slice(0, i) + main + h.slice(j);
 }
 wr('failed/index.html', shell('Something went wrong', 'Sorry, we could not send your details',
-  '<p>Something went wrong while sending your details, so we may not have them yet. Please try the <a href="/income-protection/get-quote/">form</a> again in a few minutes.</p>'));
+  '<p>Something went wrong while sending your details, so we may not have them yet. Please try the form again in a few minutes.</p>', '<a class="sp-btn" href="/">Try again</a>'));
 wr('404.html', shell('Page not found', 'Page not found',
-  '<p>We could not find that page. You can start again from the <a href="/">home page</a> or go straight to the <a href="/income-protection/get-quote/">quote form</a>.</p>'));
+  '<p>We could not find that page. You can start again from the home page or go straight to the quote form.</p>', '<a class="sp-btn" href="/">Go to the home page</a><a class="sp-btn alt" href="/income-protection/">What is income protection?</a>'));
 
 // ---------------------------------------------------------------- images (share card, logo)
 const ff = (args) => execFileSync('ffmpeg', ['-y', '-v', 'error', ...args], { stdio: 'inherit' });
