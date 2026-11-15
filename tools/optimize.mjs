@@ -161,12 +161,19 @@ if (!sipCss) throw new Error('landing page stylesheet not found');
 const shellCssText = minCss(sipCss.replace(/@import url\([^)]*\)\s*;?/g, '') + SH.EXTRA_CSS);
 const shellName = `assets/css/sip-${hash(shellCssText)}.css`;
 wr(shellName, shellCssText);
+// second, smaller sheet for the older pages: only the header/footer rules and the colour variables, so their own layout rules are not overridden
+const chromeBlocks = blocks(minCss(sipCss.replace(/@import url\([^)]*\)\s*;?/g, ''))).filter(b => /^\.sip\{--/.test(b) || (/\.sip (\.top|\.wrap|footer|\.ftop|\.links|\.fcols|\.fdp|\.se-wm|\.se-wt|\.se-top|\.tr\b)/.test(b) && !/\.se-(hero|card|ben|pn|four|three|rev|faq|final|btn|sec|st|b)\b/.test(b)));
+const chromeCssText = chromeBlocks.join('') + minCss(SH.EXTRA_CSS);
+const chromeName = `assets/css/sip-chrome-${hash(chromeCssText)}.css`;
+wr(chromeName, chromeCssText);
 const SHELL = SH.pieces(homeSrc);
 SHELL.footer = SHELL.footer.replace(/(<a href="\/cookie-policy\/">Cookie Policy<\/a>)(<\/nav>)/, '$1<button type="button" class="sip-cc-link" data-cc="show-preferencesModal">Manage cookies</button>$2');
 const formJsBuf = fs.readFileSync(path.join(HERE, 'assets-src/vmforms-public.js'));
 const formJsName = `wp-content/plugins/vmforms/public/js/public-${hash(formJsBuf.toString())}.js`;
 wr(formJsName, formJsBuf);
 fs.copyFileSync(path.join(HERE, 'assets-src/vv-tracking.js'), path.join(OUT, 'assets/js/vv-tracking.js'));
+fs.mkdirSync(path.join(OUT, 'assets/img/badges'), { recursive: true });
+for (const f of fs.readdirSync(path.join(HERE, 'assets-src/badges'))) fs.copyFileSync(path.join(HERE, 'assets-src/badges', f), path.join(OUT, 'assets/img/badges', f));
 
 // ---------------------------------------------------------------- page copy: title / description / schema type
 const FAQ = true;
@@ -243,6 +250,10 @@ const GTM_LATE = `(function(){var done=0,ev=['pointerdown','keydown','scroll','t
 const stats = { pages: 0, indexable: 0, formPages: 0, before: 0, after: 0 };
 
 let heroPreload = '';
+const FORM_FOOT = '<div class="vmform-footer"><div class="sip-security">🔒 Your details are secure and encrypted</div><div class="sip-security-small">No obligation quotes • Secure & confidential</div>'
+  + '<div class="sip-tp"><span class="stars" aria-hidden="true">★★★★★</span><span>4.9/5 on Trustpilot**</span></div>'
+  + '<div class="sip-badges"><img src="/assets/img/badges/data-matters.svg" alt="Your data matters" width="89" height="40" loading="lazy" decoding="async"><img src="/assets/img/badges/ico.svg" alt="Information Commissioner\'s Office" width="68" height="40" loading="lazy" decoding="async"><img src="/assets/img/badges/privacy-protected.svg" alt="Privacy protected" width="112" height="40" loading="lazy" decoding="async"></div></div>';
+const FORM_FOOT_CSS = '.vmform-footer{text-align:center;margin-top:18px}.vmform-footer .sip-security{font-size:19px;font-weight:700;color:#2b3f55}.vmform-footer .sip-security-small{font-size:16px;font-weight:400;color:#5a6a7a;margin-top:4px}.vmform-footer .sip-tp{margin:20px 0 4px;font-size:18px;font-weight:700;color:#1d2f46;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}.vmform-footer .sip-tp .stars{color:#00b67a;letter-spacing:2px;font-size:24px;line-height:1}.vmform-footer .sip-badges{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:16px;flex-wrap:wrap}.vmform-footer .sip-badges img{height:40px;width:auto;display:block}@media(max-width:520px){.vmform-footer .sip-badges{gap:12px}.vmform-footer .sip-badges img{height:34px}}';
 function webpSize(file) {   // width and height from a WebP header
   const b = fs.readFileSync(file);
   if (b.toString('ascii', 12, 16) === 'VP8 ') return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
@@ -343,13 +354,17 @@ function transform(f) {
     else {
       shellOwn = true;
       inner = inner.replace(/<div class="top"><div class="wrap">[\s\S]*?<\/div><\/div>/, '').replace(/<footer>[\s\S]*?<\/footer>/, '');
-      main = (crumbs ? '<div class="sp-wrap" style="padding-top:16px">' + crumbs + '</div>' : '') + '<div class="sp-own">' + inner + '</div>'
-        + `<link rel="stylesheet" href="/${shellName}">`;   // second copy, after the page's own CSS, so the shared header, footer and palette win
+      inner = inner.replace(/<figure(?:(?!<\/figure>)[\s\S])*?alt="[^"]*\bdog\b[^"]*"[\s\S]*?<\/figure>/gi, '');
+      const leg = /<div class="sip[ "]/.test(inner);
+      main = (crumbs ? '<div class="sp-wrap" style="padding-top:16px">' + crumbs + '</div>' : '') + '<div class="sp-own ' + (leg ? 'sp-leg' : 'sp-bb') + '">' + inner + '</div>'
+        + `<link rel="stylesheet" href="/${chromeName}">`;   // second sheet, after the page's own CSS, so the shared header, footer and palette win
     }
     const gtmNs = (body.match(/<noscript><iframe src="https:\/\/www\.googletagmanager\.com\/ns\.html[\s\S]*?<\/noscript>/) || [''])[0];
     const bodyOpen = ((body.match(/<body[^>]*>/) || ['<body>'])[0]).replace(/class="([^"]*)"/, 'class="$1 sp"');
     body = bodyOpen + '\n' + gtmNs + '\n' + SH.page(SHELL.header, main, SHELL.footer) + '\n</body>\n</html>';
   }
+  if (isForm) body = body.replace(/<div class="vmform-footer">[\s\S]*?sip-security-small">[\s\S]*?<\/div>\s*<\/div>/, FORM_FOOT);
+  body = body.replace('<p id="sip-fn2">Our main broker partner', '<p id="sip-fn2">** Our main broker partner');
   // VM form: its generated form CSS and its form definition script are big and identical on every visit, so serve them as cacheable files
   let formCssFile = '', formCfgFile = '';
   if (isForm) {
@@ -359,6 +374,7 @@ function transform(f) {
     });
     body = body.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/g, (m, a, js) => {
       if (js.length < 20000 || !/all_campaign_data/.test(js)) return m;
+      js = js.replace(/"form_footer":"(?:[^"\\]|\\.)*"/, () => '"form_footer":' + JSON.stringify(FORM_FOOT.replace(/^<div class="vmform-footer">/, '').replace(/<\/div>$/, '')));
       formCfgFile = 'assets/js/vmcfg-' + hash(js) + '.js'; wr(formCfgFile, js); return '';
     });
   }
@@ -398,7 +414,7 @@ function transform(f) {
   // fonts: only the families this page uses; preload the one its text needs first
   const detect = keepStyles.join('') + body;
   const count = n => (detect.match(new RegExp(n, 'gi')) || []).length;
-  const faces = fontBlocks.filter(([fam]) => count(fam) > 0 || fam === 'Open Sans' && !isSip || (shell && /^(Inter|Plus Jakarta Sans)$/.test(fam))).map(([, b]) => b).join('');
+  const faces = fontBlocks.filter(([fam]) => count(fam) > 0 || fam === 'Open Sans' && !isSip || (shell && /^(Inter|Plus Jakarta Sans)$/.test(fam)) || (isForm && fam === 'Nunito')).map(([, b]) => b).join('');
   const pre = f => `<link rel="preload" href="/assets/fonts/${f}.woff2" as="font" type="font/woff2" crossorigin>`;
   if (isSip || shell) parts.push(pre('inter-400-700-latin') + pre('plusjakartasans-500-800-latin') + (isForm ? pre('nunito-400-800-latin') : ''));
   else parts.push(pre('opensans-300-800-latin'));
@@ -408,7 +424,7 @@ function transform(f) {
   if (shell) parts.push(`<link rel="stylesheet" href="/${shellName}">`);
   if (isForm) parts.push(`<link rel="stylesheet" href="/${formName}">`);
   if (formCssFile) parts.push(`<link rel="stylesheet" href="/${formCssFile}">`);
-  if (isForm) parts.push('<style>.vmform-disclaimer a{text-decoration:underline;font-weight:700}</style>');
+  if (isForm) parts.push('<style>.vmform-disclaimer a{text-decoration:underline;font-weight:700}' + FORM_FOOT_CSS + '</style>');
   if (!shell || shellOwn) for (const s of keepStyles) parts.push(`<style>${s}</style>`);
   // deferred scripts, in dependency order
   const scripts = isForm ? ['/wp-includes/js/jquery/jquery.min.js', '/wp-includes/js/jquery/jquery-migrate.min.js', ...(formCfgFile ? ['/' + formCfgFile] : []), ...FORM_SCRIPTS] : [];
