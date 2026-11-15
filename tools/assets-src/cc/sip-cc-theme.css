@@ -1,0 +1,72 @@
+/* Simple Income Protection branding for CookieConsent v3.
+   The first-visit banner is a dark, semi-transparent bar along the bottom of the screen; the preferences panel stays light.
+   Accept and Reject share one look (UK GDPR / PECR / Google EU user consent policy: equal prominence). */
+#cc-main {
+  --cc-font-family: "Inter", "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cc-bg: #ffffff;
+  --cc-primary-color: #1d2f46;
+  --cc-secondary-color: #4F5F6E;
+  --cc-btn-primary-bg: #2563c7;
+  --cc-btn-primary-color: #ffffff;
+  --cc-btn-primary-hover-bg: #1b4fa3;
+  --cc-btn-primary-hover-color: #ffffff;
+  --cc-btn-secondary-bg: #F3F7FA;
+  --cc-btn-secondary-color: #1d2f46;
+  --cc-btn-secondary-hover-bg: #E4ECF2;
+  --cc-btn-secondary-hover-color: #1d2f46;
+  --cc-btn-border-radius: 10px;
+  --cc-modal-border-radius: 16px;
+  --cc-toggle-on-bg: #2563c7;
+  --cc-toggle-readonly-bg: #cfd6e2;
+  --cc-link-color: #2563c7;
+  --cc-separator-border-color: #E4ECF2;
+  --cc-cookie-category-block-bg: #F3F7FA;
+  --cc-cookie-category-block-bg-hover: #E8F0F6;
+}
+#cc-main .cm__title, #cc-main .pm__title { letter-spacing: -.01em; }
+#cc-main .pm { box-shadow: 0 18px 44px rgba(20,48,74,.18); }
+
+/* ---- first-visit banner: dark, semi-transparent, full-width bar at the bottom ---- */
+#cc-main .cm {
+  --cc-bg: rgba(10, 24, 38, .84);
+  --cc-primary-color: #ffffff;
+  --cc-secondary-color: #d9e3ec;
+  --cc-link-color: #9ccfff;
+  --cc-btn-primary-bg: #ffffff;
+  --cc-btn-primary-color: #1d2f46;
+  --cc-btn-primary-hover-bg: #e6eef5;
+  --cc-btn-primary-hover-color: #1d2f46;
+  --cc-btn-secondary-bg: #ffffff;
+  --cc-btn-secondary-color: #1d2f46;
+  --cc-btn-secondary-hover-bg: #e6eef5;
+  --cc-btn-secondary-hover-color: #1d2f46;
+  --cc-separator-border-color: rgba(255,255,255,.18);
+  --cc-footer-bg: rgba(255,255,255,.06);
+  --cc-footer-color: #d9e3ec;
+  --cc-footer-border-color: rgba(255,255,255,.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 -8px 30px rgba(0,0,0,.28);
+}
+#cc-main .cm .cm__title { color: #ffffff !important; }
+#cc-main .cm .cm__desc, #cc-main .cm .cm__footer { color: #d9e3ec !important; }
+#cc-main .cm .cm__footer a, #cc-main .cm .cm__desc a { color: #9ccfff !important; }
+/* Accept and Reject: identical white buttons */
+#cc-main .cm .cm__btn[data-role="all"],
+#cc-main .cm .cm__btn[data-role="necessary"] {
+  background: #ffffff !important;
+  color: #1d2f46 !important;
+}
+/* Manage preferences: outlined, still clearly a button */
+#cc-main .cm .cm__btn[data-role="show"] {
+  background: transparent !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255,255,255,.7) !important;
+}
+#cc-main .cm .cm__btn:focus-visible { outline: 3px solid #9ccfff; outline-offset: 2px; }
+/* Preferences panel buttons keep the site purple */
+#cc-main .pm .pm__btn[data-role="all"],
+#cc-main .pm .pm__btn[data-role="necessary"] {
+  background: #2563c7 !important;
+  color: #ffffff !important;
+}
