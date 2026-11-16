@@ -5,6 +5,9 @@
 //   - Each lead carries a label in the form's hidden vmform_lp1id field:  AB:<test>:<A|B>
 //   - Events (view / start / submit) are written to the D1 table `events`. No personal data is stored.
 //   - Known bots always get version A and are never counted. Test traffic (non-live host or ?vmtest=1) is never counted.
+//   - Google Ads clicks (added 16 Nov 2026): each event also records src ('ad' or 'other') and ck, a short one-way hash
+//     of the Google click ID (gclid / vvclickid / gbraid / wbraid) taken from the page address. The dashboard counts one
+//     visit per ad click and one lead per ad click, the same way Google Ads counts clicks and conversions (one per click).
 // Configuration (wrangler vars): AB_ENABLED ("1" to run), AB_SITE, AB_TEST, AB_PATH, AB_B_PATH, AB_SPLIT (% to B).
 // Secret: DASH_PASSWORD (dashboard at /ab-dashboard/). Nothing here may ever block a lead: every DB call is guarded.
 
@@ -71,18 +74,44 @@ function ensureSchema(env) {
       // Run times (added 16 Nov 2026): started = when Run was pressed (counting starts then), stopped = when it was stopped.
       const cols = ((await env.DB.prepare('PRAGMA table_info(ab_config)').all()).results || []).map(c => c.name);
       for (const c of ['started', 'stopped']) if (!cols.includes(c)) { try { await env.DB.prepare('ALTER TABLE ab_config ADD COLUMN ' + c + ' INTEGER').run(); } catch (e) { /* another isolate added it */ } }
+      // Google Ads click columns (added 16 Nov 2026). Older rows keep NULL and are counted only as page loads.
+      const ecols = ((await env.DB.prepare('PRAGMA table_info(events)').all()).results || []).map(c => c.name);
+      for (const c of ['src', 'ck']) if (!ecols.includes(c)) { try { await env.DB.prepare('ALTER TABLE events ADD COLUMN ' + c + ' TEXT').run(); } catch (e) { /* another isolate added it */ } }
     }).catch(e => { schemaReady = null; throw e; });
   }
   return schemaReady;
 }
 
+// Was this page reached from a Google ad? Google auto-tagging adds gclid (gbraid / wbraid on some iPhones) and the
+// accounts' tracking template adds vvsource=google_ads&vvclickid={gclid}. Returns { src, ck }: ck is the first 16 hex
+// characters of a SHA-256 hash of the click ID, so one click is counted once without storing the ID itself.
+// Takes one or more addresses (e.g. the request address, then its Referer) and uses the first that is an ad click.
+export async function adClick(...addrs) {
+  let seen = false;
+  for (const a of addrs) {
+    if (!a) continue;
+    try {
+      const q = (typeof a === 'string' ? new URL(a) : a).searchParams;
+      const id = (q.get('gclid') || q.get('vvclickid') || q.get('gbraid') || q.get('wbraid') || '').trim();
+      if (id && !/^\{.*\}$/.test(id)) {
+        const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id.slice(0, 512))));
+        return { src: 'ad', ck: Array.from(h.slice(0, 8), b => b.toString(16).padStart(2, '0')).join('') };
+      }
+      if (q.get('vvsource') === 'google_ads') seen = true;
+    } catch (e) { /* not an address */ }
+  }
+  return { src: seen ? 'ad' : 'other', ck: null };
+}
+
+// e.from: address(es) to read the ad click from (worked out off the visitor's path, so serving is never slowed).
 export function logEvent(env, ctx, e) {
   if (!env.DB) return;
   const job = (async () => {
     try {
       await ensureSchema(env);
-      await env.DB.prepare('INSERT INTO events (ts, site, test, variant, event, device, outcome, reason) VALUES (?,?,?,?,?,?,?,?)')
-        .bind(Date.now(), e.site, e.test, e.variant, e.event, e.device || null, e.outcome || null, e.reason ? String(e.reason).slice(0, 60) : null).run();
+      const a = e.from ? await adClick(...[].concat(e.from)) : { src: null, ck: null };
+      await env.DB.prepare('INSERT INTO events (ts, site, test, variant, event, device, outcome, reason, src, ck) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .bind(Date.now(), e.site, e.test, e.variant, e.event, e.device || null, e.outcome || null, e.reason ? String(e.reason).slice(0, 60) : null, a.src, a.ck).run();
     } catch (err) { console.log(JSON.stringify({ evt: 'ab-log-error', error: String(err && err.message || err).slice(0, 160) })); }
   })();
   if (ctx && ctx.waitUntil) ctx.waitUntil(job);
@@ -153,7 +182,7 @@ export async function handleBeacon(request, env, ctx, url, liveHosts) {
     const ua = request.headers.get('user-agent') || '';
     const isLive = liveHosts.includes(url.hostname.toLowerCase()) && !/[?&]vmtest=1/.test(request.headers.get('referer') || '');
     if (label && d.e === 'start' && isLive && !isBot(ua)) {
-      logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'start', device: deviceOf(ua) });
+      logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'start', device: deviceOf(ua), from: request.headers.get('referer') });
     }
   } catch (e) { /* ignore */ }
   return new Response(null, { status: 204 });
@@ -187,6 +216,9 @@ const candidatePages = env => (env.AB_PAGES || '/life-quote/,/get-quote/,/your-l
 
 // Save the controls (POST from the dashboard). Returns a short message to show at the top.
 async function saveSettings(request, env, url) {
+  // 16 Nov 2026: tests are started and stopped on Ads Intelligence > Split tests, which keeps every run in Split test
+  // results. This page is read-only so a run is never changed outside that history and counts are never deleted.
+  return 'Nothing was changed here. Start and stop tests on Ads Intelligence > Split tests (simplelifecover.com/ads/#split); every run is kept in Split test results.';
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return 'Rejected: the request came from another site.';
   const base = abConfig(env);
@@ -284,16 +316,7 @@ export async function dashboard(request, env, url) {
   const running = cfg.enabled && cfg.site === site && cfg.test === test;
   const pageOpts = cur => [...new Set([cur, ...candidatePages(env)])].map(p => `<option value="${esc(p)}"${p === cur ? ' selected' : ''}>${esc(p)}</option>`).join('');
   const hid = (k, v) => `<input type="hidden" name="${k}" value="${esc(v)}">`;
-  const controls = `<h2>Test settings</h2>${notice ? `<div class="verdict accent" style="margin-bottom:10px">${esc(notice)}</div>` : ''}
-<div class="card"><form method="post" action="${act}" class="statusrow">${hid('enabled', cfg.enabled ? '0' : '1')}${hid('a_path', cfg.aPath)}${hid('b_path', cfg.bPath)}${hid('split', cfg.split)}<div><p class="l" style="margin:0">Test status</p><p class="s" style="margin:2px 0 0">${cfg.enabled ? cfg.split + '% of visitors see page B' : 'Everyone sees the normal page'}</p></div><button class="sw ${cfg.enabled ? 'on' : 'off'}" type="submit" title="${cfg.enabled ? 'Turn the test off' : 'Turn the test on'}"><span class="dot"></span>${cfg.enabled ? 'On' : 'Off'}<span class="knob"></span></button></form>
-<form method="post" action="${act}" style="display:block;margin:0">${hid('enabled', cfg.enabled ? '1' : '0')}
-<p class="l" style="margin:0 0 4px">Address visitors use (fixed)</p><p style="margin:0 0 10px;color:#fff">${esc(cfg.site)}${esc(cfg.path)}</p>
-<div class="tiles"><div style="flex:1;min-width:150px"><p class="l" style="margin:0 0 4px">Page A (control)</p><select name="a_path" style="width:100%">${pageOpts(cfg.aPath)}</select><input class="tx" name="a_custom" placeholder="or type another page, e.g. /my-page/"></div>
-<div style="flex:1;min-width:150px"><p class="l" style="margin:0 0 4px">Page B (challenger)</p><select name="b_path" style="width:100%">${pageOpts(cfg.bPath)}</select><input class="tx" name="b_custom" placeholder="or type another page, e.g. /my-page/"></div>
-<div style="flex:0 0 110px"><p class="l" style="margin:0 0 4px">Share to B</p><select name="split" style="width:100%">${[10, 20, 30, 40, 50, 60, 70, 80, 90].map(n => `<option value="${n}"${n === Number(cfg.split) ? ' selected' : ''}>${n}%</option>`).join('')}</select></div></div>
-<div class="btnrow"><button class="sv" type="submit">Save settings</button><button class="sv danger" type="submit" form="ab-reset">Reset counts for this test</button></div></form>
-<form method="post" action="${act}" id="ab-reset" style="display:none" onsubmit="return confirm('Clear ALL counts for this test (' + this.test.value + ')? This cannot be undone.')">${hid('reset', '1')}${hid('test', test)}</form>
-<p class="s" style="margin:8px 0 0">Changing a page starts a new test (new name, new numbers). Older tests stay available in the test list above. Every page must contain the lead form.</p></div>`;
+  const controls = `<h2>Test settings</h2>${notice ? `<div class="verdict accent" style="margin-bottom:10px">${esc(notice)}</div>` : ''}<div class="card"><p class="s" style="margin:0">Tests are now started and stopped on <a href="/ads/#split" target="_top" style="color:var(--blue)">Ads Intelligence &gt; Split tests</a>, and every run is kept in Split test results. This page only shows figures.</p></div>`;
 
   const gauge = (value, max, color, big, label) => {
     const frac = Math.max(0, Math.min(1, max > 0 ? value / max : 0)), L = Math.PI * 38;

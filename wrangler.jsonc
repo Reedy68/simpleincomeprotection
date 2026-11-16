@@ -16,8 +16,8 @@
     "FAILED_URL": "/failed/",
     "AB_ENABLED": "0",
     "AB_SITE": "simpleincomeprotection.co.uk",
-    "AB_PATH": "C:/Program Files/Git/",
-    "AB_B_PATH": "C:/Program Files/Git/",
+    "AB_PATH": "/",
+    "AB_B_PATH": "/",
     "AB_SPLIT": "50"
   },
   "d1_databases": [
