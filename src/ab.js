@@ -110,8 +110,10 @@ export function logEvent(env, ctx, e) {
     try {
       await ensureSchema(env);
       const a = e.from ? await adClick(...[].concat(e.from)) : { src: null, ck: null };
+      // Views served with the form-step tracker are marked 'steps', so "where people stop" only counts those visits.
+      const reason = e.reason ? String(e.reason).slice(0, 60) : e.event === 'view' ? 'steps' : null;
       await env.DB.prepare('INSERT INTO events (ts, site, test, variant, event, device, outcome, reason, src, ck) VALUES (?,?,?,?,?,?,?,?,?,?)')
-        .bind(Date.now(), e.site, e.test, e.variant, e.event, e.device || null, e.outcome || null, e.reason ? String(e.reason).slice(0, 60) : null, a.src, a.ck).run();
+        .bind(Date.now(), e.site, e.test, e.variant, e.event, e.device || null, e.outcome || null, reason, a.src, a.ck).run();
     } catch (err) { console.log(JSON.stringify({ evt: 'ab-log-error', error: String(err && err.message || err).slice(0, 160) })); }
   })();
   if (ctx && ctx.waitUntil) ctx.waitUntil(job);
@@ -157,7 +159,19 @@ export function chooseVariant(request, url, cfg, isTest) {
   return { variant, count: !isTest, device: deviceOf(ua) };
 }
 
-const BEACON = '<script>(function(){var f=document.querySelector(".vmform"),d=document.body.getAttribute("data-ab");if(!f||!d)return;var s=0;function go(){if(s)return;s=1;try{navigator.sendBeacon("/ab-event",new Blob([JSON.stringify({e:"start",l:d})],{type:"text/plain"}))}catch(x){}}f.addEventListener("pointerdown",go,{once:true});f.addEventListener("keydown",go,{once:true})})()</script>';
+// Browser beacon on split pages. Sends (no cookies, no personal data, never what anyone types):
+//   start: the first tap or keypress on the form;
+//   step:  each time the visitor moves further into a multi-step VM form, with the step number, the number of steps
+//          and the NAMES of up to three fields on that step (e.g. "cover_amount+cover_length"), so the dashboard can
+//          show which question people leave at. Field values are never read.
+const BEACON = '<script>(function(){var f=document.querySelector(".vmform"),d=document.body.getAttribute("data-ab");if(!f||!d)return;' +
+  'function send(o){o.l=d;try{navigator.sendBeacon("/ab-event",new Blob([JSON.stringify(o)],{type:"text/plain"}))}catch(x){}}' +
+  'var s=0;function go(){if(s)return;s=1;send(st&&st.length>1?{e:"start",n:0,t:st.length,f:nm(st[0])}:{e:"start"})}f.addEventListener("pointerdown",go,{once:true});f.addEventListener("keydown",go,{once:true});' +
+  'var st=f.querySelectorAll(".vmform-step"),max=0;if(st.length<2||!window.MutationObserver)return;' +
+  'function idx(){for(var i=0;i<st.length;i++)if(st[i].classList.contains("vmform-step-active"))return i;return -1}' +
+  'function nm(el){var n=[],q=el.querySelectorAll("input[name],select[name],textarea[name]");for(var i=0;i<q.length&&n.length<4;i++){var m=q[i].name.replace(/-[dmy]$/,"");if(!/^(vmform_|affiliate)/.test(m)&&n.indexOf(m)<0)n.push(m)}return n.join("+").slice(0,55)}' +
+  'new MutationObserver(function(){var i=idx();if(i>max){max=i;send({e:"step",n:i,t:st.length,f:nm(st[i])})}}).observe(f,{subtree:true,attributes:true,attributeFilter:["class"]})' +
+  '})()</script>';
 
 export function labelPage(res, cfg, variant) {
   const label = `AB:${cfg.test}:${variant}`;
@@ -181,8 +195,15 @@ export async function handleBeacon(request, env, ctx, url, liveHosts) {
     const cfg = abConfig(env);
     const ua = request.headers.get('user-agent') || '';
     const isLive = liveHosts.includes(url.hostname.toLowerCase()) && !/[?&]vmtest=1/.test(request.headers.get('referer') || '');
+    // Steps: stored as reason "<step>/<steps>:<field names>", e.g. "3/7:cover_amount+cover_length" (start = step 0).
+    const n = Number(d && d.n), t = Number(d && d.t), fld = String(d && d.f || '');
+    const okSteps = Number.isInteger(t) && t > 1 && t <= 30 && /^[A-Za-z0-9_+-]{0,55}$/.test(fld);
     if (label && d.e === 'start' && isLive && !isBot(ua)) {
-      logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'start', device: deviceOf(ua), from: request.headers.get('referer') });
+      logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'start', device: deviceOf(ua), from: request.headers.get('referer'), reason: okSteps ? '0/' + t + ':' + fld : null });
+    }
+    // Furthest step reached so far on this page load.
+    if (label && d.e === 'step' && isLive && !isBot(ua) && Number.isInteger(n) && Number.isInteger(t) && n >= 1 && n < t && t <= 30 && /^[A-Za-z0-9_+-]{0,55}$/.test(fld)) {
+      logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'step', device: deviceOf(ua), reason: n + '/' + t + ':' + fld, from: request.headers.get('referer') });
     }
   } catch (e) { /* ignore */ }
   return new Response(null, { status: 204 });
