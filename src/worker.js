@@ -48,7 +48,7 @@ export default {
         if (ab.status === 200 && (ab.headers.get('content-type') || '').includes('text/html')) {
           if (test) ab = testPage(ab);
           ab = labelPage(ab, abCfg, pick.variant);
-          if (pick.count) logEvent(env, ctx, { site: abCfg.site, test: abCfg.test, variant: pick.variant, event: 'view', device: pick.device });
+          if (pick.count) logEvent(env, ctx, { site: abCfg.site, test: abCfg.test, variant: pick.variant, event: 'view', device: pick.device, from: url });
         }
         return ab;
       }
@@ -172,7 +172,7 @@ function abSubmit(env, ctx, params, request, isTest, isValidate, outcome, reason
     const cfg = abConfig(env);
     if (!label || !cfg.site) return;   // the label carries its own test name (it can change from the dashboard)
     const ua = request.headers.get('user-agent') || '';
-    logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'submit', device: /mobi|android|iphone|ipad/i.test(ua) ? 'mobile' : 'desktop', outcome, reason });
+    logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'submit', device: /mobi|android|iphone|ipad/i.test(ua) ? 'mobile' : 'desktop', outcome, reason, from: [request.url, request.headers.get('referer')] });
   } catch (e) { /* never block a lead */ }
 }
 
