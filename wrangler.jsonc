@@ -13,7 +13,15 @@
     "LIVE_HOSTS": "simpleincomeprotection.co.uk,www.simpleincomeprotection.co.uk",
     "REFERER_ORIGIN": "https://simpleincomeprotection.co.uk",
     "DEFAULT_SOURCE": "ppcsearch",
-    "FAILED_URL": "/failed/"
+    "FAILED_URL": "/failed/",
+    "AB_ENABLED": "0",
+    "AB_SITE": "simpleincomeprotection.co.uk",
+    "AB_PATH": "C:/Program Files/Git/",
+    "AB_B_PATH": "C:/Program Files/Git/",
+    "AB_SPLIT": "50"
   },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "blab-ab", "database_id": "a2e67966-30dd-438f-8931-e6ddc2974645" }
+  ],
   "observability": { "enabled": true }
 }

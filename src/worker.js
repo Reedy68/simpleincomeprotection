@@ -6,7 +6,12 @@
 //    "Form Submit Success GTM" conversion still gets its lead id).
 // 2. POST /consent-log    -> records cookie-consent choices (Workers Logs).
 // 3. POST /contact-submit -> not enabled (the WordPress contact form was not carried over).
-// 4. Everything else (GET/HEAD) -> the static files, untouched.
+// 4. Split test (ab.js, shared D1 database blab-ab): when the owner presses Run on the Ads Intelligence dashboard
+//    (simplelifecover.com/ads/, Split tests tab), half of the visitors to the control page see the test page at the same
+//    address, and views, form starts (POST /ab-event) and lead outcomes are counted. Off until Run is pressed; bots and
+//    test visits get the normal page and are never counted. GET /ab-ping tells the dashboard this site has the code.
+//    The split never sends anything to VM itself: it only labels the real visitor's own form (vmform_lp1id).
+// 5. Everything else (GET/HEAD) -> the static files, untouched.
 //
 // TEST MODE: leads are marked as TEST at VM (is_test=1) unless the request is on a live host.
 //   - on any host not listed in LIVE_HOSTS (workers.dev, previews)           -> always test
@@ -14,17 +19,41 @@
 //   - on a live host with no flag                                              -> LIVE lead
 // No secrets are needed: VM identifies the campaign from the form's own hidden fields.
 
+import { getAbConfig, isAbPath, chooseVariant, labelPage, handleBeacon, logEvent, parseLabel, abConfig, abPing } from './ab.js';
+
 const MAX_BODY_BYTES = 100000;
 const VM_TIMEOUT_MS = 20000;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === 'POST') {
       if (url.pathname === '/consent-log') return consentLog(request);
+      if (url.pathname === '/ab-event') return handleBeacon(request, env, ctx, url, liveHostList(env));
       if (url.pathname === '/contact-submit') return contactSubmit();
-      return leadSubmit(request, env, url);
+      return leadSubmit(request, env, url, ctx);
     }
+    if (url.pathname === '/ab-ping') return abPing(env);
+
+    // Split test (see ab.js): only on the control page set from the dashboard, only while it runs (or forced on a test
+    // request with ?ab=A / ?ab=B). Otherwise the page is served exactly as before.
+    const abCfg = (request.method === 'GET' || request.method === 'HEAD') && url.pathname.endsWith('/') ? await getAbConfig(env) : null;
+    if (abCfg && isAbPath(url, abCfg)) {
+      const test = isTestRequest(url, env);
+      const pick = chooseVariant(request, url, abCfg, test);
+      if (pick) {
+        const pagePath = pick.variant === 'B' ? abCfg.bPath : abCfg.aPath;
+        const src = pagePath === url.pathname ? request : new Request(new URL(pagePath, url).toString(), request);
+        let ab = await env.ASSETS.fetch(src);
+        if (ab.status === 200 && (ab.headers.get('content-type') || '').includes('text/html')) {
+          if (test) ab = testPage(ab);
+          ab = labelPage(ab, abCfg, pick.variant);
+          if (pick.count) logEvent(env, ctx, { site: abCfg.site, test: abCfg.test, variant: pick.variant, event: 'view', device: pick.device });
+        }
+        return ab;
+      }
+    }
+
     const res = await env.ASSETS.fetch(request);
     // Test pages (any non-live host, or ?vmtest=1): allow typing the address by hand (the Data8 lookup is locked to
     // the live domain) and show a small TEST MODE tag. Live visitors never see either.
@@ -61,7 +90,7 @@ const json = (obj, status = 200, extra = {}) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...extra } });
 
 // ---------- lead submission ----------
-async function leadSubmit(request, env, url) {
+async function leadSubmit(request, env, url, ctx) {
   let params;
   try {
     const ct = request.headers.get('content-type') || '';
@@ -117,6 +146,7 @@ async function leadSubmit(request, env, url) {
     const text = (await res.text()).trim();
     let parsed = null; try { parsed = JSON.parse(text); } catch (e) { /* not JSON */ }
     console.log(JSON.stringify({ ...meta, vmHttp: res.status, vmStatus: parsed && parsed.status, hasLeadId: !!(parsed && parsed.lead_id) }));
+    abSubmit(env, ctx, params, request, isTest, isValidate, parsed && parsed.status === 'success' ? 'accepted' : 'rejected', parsed && (parsed.error_code || parsed.status));
     if (isValidate && res.status >= 200 && res.status < 300 && parsed && typeof parsed === 'object') {
       // VM's validator returns an empty status when nothing is wrong; VM's own plugin turns that into "success"
       // (the form only moves on to the real submit when it sees "success").
@@ -129,8 +159,21 @@ async function leadSubmit(request, env, url) {
     return json({ status: 'warning', message: '', field_errors: [], redirect: failedUrl }, 200, { 'x-lead-mode': mode });
   } catch (e) {
     console.log(JSON.stringify({ ...meta, error: String(e && e.message || e).slice(0, 160) }));
+    abSubmit(env, ctx, params, request, isTest, isValidate, 'error', 'vm-unreachable');
     return json({ status: 'warning', message: '', field_errors: [], redirect: failedUrl }, 200, { 'x-lead-mode': mode });
   }
+}
+
+// Split-test bookkeeping for a finished lead submission (live, non-validation, labelled posts only). Never blocks a lead.
+function abSubmit(env, ctx, params, request, isTest, isValidate, outcome, reason) {
+  try {
+    if (isTest || isValidate) return;
+    const label = parseLabel(params.get('vmform_lp1id'));
+    const cfg = abConfig(env);
+    if (!label || !cfg.site) return;   // the label carries its own test name (it can change from the dashboard)
+    const ua = request.headers.get('user-agent') || '';
+    logEvent(env, ctx, { site: cfg.site, test: label.test, variant: label.variant, event: 'submit', device: /mobi|android|iphone|ipad/i.test(ua) ? 'mobile' : 'desktop', outcome, reason });
+  } catch (e) { /* never block a lead */ }
 }
 
 // PHP-style query parsing: a[b][c]=1&d[]=2 -> nested object/array
