@@ -45,6 +45,7 @@ export default {
         const pagePath = pick.variant === 'B' ? abCfg.bPath : abCfg.aPath;
         const src = pagePath === url.pathname ? request : new Request(new URL(pagePath, url).toString(), request);
         let ab = await env.ASSETS.fetch(src);
+        if (ab.status === 404) return notFound(request, env);
         if (ab.status === 200 && (ab.headers.get('content-type') || '').includes('text/html')) {
           if (test) ab = testPage(ab);
           ab = labelPage(ab, abCfg, pick.variant);
@@ -55,6 +56,7 @@ export default {
     }
 
     const res = await env.ASSETS.fetch(request);
+    if (res.status === 404) return notFound(request, env);
     // Test pages (any non-live host, or ?vmtest=1): allow typing the address by hand (the Data8 lookup is locked to
     // the live domain) and show a small TEST MODE tag. Live visitors never see either.
     if (isTestRequest(url, env) && res.status === 200 && (res.headers.get('content-type') || '').includes('text/html')) return testPage(res);
@@ -214,4 +216,18 @@ function contactSubmit() {
     '<body style="font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 18px;color:#1d2f46"><h1>Sorry, the contact form is not available</h1>' +
     '<p>You can still <a href="/income-protection/get-quote/">get a free quote</a>.</p></body></html>';
   return new Response(html, { status: 503, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
+// Anything that does not exist gets the site's 404 page marked no-store (wrangler.jsonc: not_found_handling "none", so
+// Cloudflare hands missing files to this script instead of answering them itself). Why: _headers applies by path, not
+// by status, so Cloudflare's own 404 for a missing /assets/css/... or /assets/fonts/... file carried "cache for a year,
+// immutable". During a deploy a browser can ask for a new file a moment before it is available and would then keep
+// the 404 page as that file for a year (unstyled page). With no-store, the next load fetches the real file. (19 Nov 2026)
+async function notFound(request, env) {
+  const page = await env.ASSETS.fetch(new Request(new URL('/404', request.url), { method: 'GET' }));
+  const headers = new Headers(page.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('X-Robots-Tag', 'noindex');
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  return new Response(request.method === 'HEAD' || page.status !== 200 ? null : page.body, { status: 404, headers });
 }
