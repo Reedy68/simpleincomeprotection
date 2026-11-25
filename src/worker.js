@@ -131,12 +131,22 @@ async function leadSubmit(request, env, url, ctx) {
     const ip = request.headers.get('CF-Connecting-IP');
     if (ip) body.set('vmform_ip', ip);                                   // as VM's reference script does
     if (!body.get('vmform_source')) body.set('vmform_source', env.DEFAULT_SOURCE || 'ppcsearch'); // broker-approved source
+    // VM POSTs to whatever claim URL it is sent, so the form script's free-text "timeout" becomes a request to a host called "timeout".
+    // VM asked (24-25 Nov 2026) for "error" when no certificate could be created. meta.cert below still logs the original value.
+    if (body.get('vmform_cert_claim_url') === 'timeout') body.set('vmform_cert_claim_url', 'error');
   }
 
   // Referer: the page address. On test hosts use the registered site origin so VM sees the domain it knows.
   const referer = isLiveHost ? request.url : ((env.REFERER_ORIGIN || 'https://simpleincomeprotection.co.uk') + url.pathname);
 
   const meta = { evt: 'lead', mode, validate: isValidate, path: url.pathname, campaign: params.get('affiliate_campaign_id'), formid: params.get('vmform_formid'), step: params.get('vmform_step'), action: params.get('vmform_ajax_action') };
+  // ContactState claim URL as received from the form: classified only (never the URL itself), plus device.
+  if (!isValidate) {
+    const claim = params.get('vmform_cert_claim_url');
+    meta.cert = !claim ? 'missing' : /^https:\/\/cert-gen\.contactstate\.com\/certs\/[0-9a-f-]+\/claim$/i.test(claim) ? 'ok' : claim === 'timeout' ? 'timeout' : claim === 'error' ? 'error' : 'other';
+    meta.certLp = params.get('vmform_landing_page_id') ? 'set' : 'empty';
+    meta.device = /mobi|android|iphone|ipad/i.test(request.headers.get('user-agent') || '') ? 'mobile' : 'desktop';
+  }
   try {
     const res = await fetch(target, {
       method: 'POST',

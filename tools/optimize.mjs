@@ -169,7 +169,7 @@ wr(chromeName, chromeCssText);
 const SHELL = SH.pieces(homeSrc);
 SHELL.footer = SHELL.footer.replace(/(<a href="\/cookie-policy\/">Cookie Policy<\/a>)(<\/nav>)/, '$1<button type="button" class="sip-cc-link" data-cc="show-preferencesModal">Manage cookies</button>$2');
 const formJsBuf = fs.readFileSync(path.join(HERE, 'assets-src/vmforms-public.js'));
-const formJsName = `wp-content/plugins/vmforms/public/js/public-${hash(formJsBuf.toString())}.js`;
+const formJsName = `wp-content/plugins/vmforms/public/js/public-${hash(formJsBuf.toString())}-t20.js`;
 wr(formJsName, formJsBuf);
 fs.copyFileSync(path.join(HERE, 'assets-src/vv-tracking.js'), path.join(OUT, 'assets/js/vv-tracking.js'));
 fs.mkdirSync(path.join(OUT, 'assets/img/badges'), { recursive: true });
@@ -239,6 +239,7 @@ function schemaFor(u, cfg, h) {
 const FORM_SCRIPTS = [
   '/wp-content/plugins/vmforms/public/static/tippedjs/js/tipped-custom.min.js',
   '/wp-content/plugins/vmforms/public/js/postcode.js',
+  '/wp-content/plugins/vmforms/public/js/cscertify-load.js',   // ContactState claim certificate (VM: mandatory), restored 25 Nov 2026
   '/wp-content/plugins/vmforms/public/static/modaal/js/modaal.js',
   '/' + formJsName,
   '/assets/js/vv-tracking.js',
